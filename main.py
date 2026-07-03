@@ -420,10 +420,11 @@ class StmcuPointsBot:
             wait = WebDriverWait(self.driver, self.page_load_timeout)
             try:
                 wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".lb1b")))
+                wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
             except TimeoutException:
                 print("[警告] 页面加载超时，尝试继续...")
             
-            self.random_delay(0.5, 1)
+            self.random_delay(2, 3)
             
             # 策略1: 精确查找 <font class="zt_r"> 元素
             if self.debug:
@@ -510,12 +511,13 @@ class StmcuPointsBot:
                 wait = WebDriverWait(self.driver, self.page_load_timeout)
                 try:
                     wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".snr")))
+                    wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
                 except TimeoutException:
                     if self.debug:
                         print("[调试] 页面加载超时")
                     break
                 
-                self.random_delay(0.5, 1)
+                self.random_delay(2, 3)
                 
                 # 查找表格中的行
                 try:
@@ -579,13 +581,18 @@ class StmcuPointsBot:
         try:
             self.driver.get(video_url)
             
+            # 等待页面完全加载
             wait = WebDriverWait(self.driver, self.page_load_timeout)
             try:
+                # 等待 body 加载完成
                 wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+                # 额外等待页面 JavaScript 执行完成
+                wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
             except TimeoutException:
                 return False, "页面加载超时"
             
-            self.random_delay(1, 2)
+            # 增加等待时间，确保动态内容加载完成
+            self.random_delay(3, 5)
             
             page_source = self.driver.page_source.lower()
             if "404" in page_source or "页面不存在" in page_source or "not found" in page_source:
@@ -736,8 +743,6 @@ class StmcuPointsBot:
             print("="*50 + "\n")
             
             video_id = self.last_video_id
-            consecutive_failures = 0
-            max_consecutive_failures = 10
             
             while self.today_points < self.max_daily_points:
                 if self.today_points >= self.max_daily_points:
@@ -763,23 +768,19 @@ class StmcuPointsBot:
                             current_points = new_points
                             status = "已看"
                             note = f"+{points_gained}积点"
-                            consecutive_failures = 0
-                            print(f"[成功] 视频 {video_id}: 获得 {points_gained} 积点，今日累计 {self.today_points}")
+                            print(f"[成功] 视频 {video_id}: 积点 {points_before} → {new_points} (+{points_gained})，今日累计 {self.today_points}")
                         else:
                             status = "无效"
                             note = "未获得积点"
-                            consecutive_failures += 1
-                            print(f"[无效] 视频 {video_id}: 未获得积点")
+                            print(f"[无效] 视频 {video_id}: 积点 {points_before} → {new_points} (+0)")
                     else:
                         status = "未知"
                         note = "无法获取积点"
-                        consecutive_failures += 1
                         print(f"[警告] 视频 {video_id}: 无法获取积点变化")
                         
                 else:
                     status = "无效"
                     note = message
-                    consecutive_failures += 1
                     print(f"[无效] 视频 {video_id}: {message}")
                     
                 self.add_log(video_id, status, points_before, current_points, note)
@@ -787,16 +788,6 @@ class StmcuPointsBot:
                 self.last_video_id = video_id + 1
                 self.save_progress()
                 
-                if consecutive_failures >= max_consecutive_failures:
-                    print(f"\n[警告] 连续 {max_consecutive_failures} 次失败，可能存在验证码或网络问题")
-                    print("[警告] 请检查浏览器窗口，处理问题后按回车继续")
-                    print("[警告] 或输入 'quit' 退出程序")
-                    user_choice = input()
-                    if user_choice.lower() == 'quit':
-                        print("[INFO] 用户选择退出")
-                        break
-                    consecutive_failures = 0
-                    
                 video_id += 1
                 
                 self.random_delay(0.5, 1.5)
