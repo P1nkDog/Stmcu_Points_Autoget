@@ -1,0 +1,10 @@
+{
+  "browser": "",
+  "max_daily_points": 300,
+  "points_per_video": 10,
+  "delay_min": 0.5,
+  "delay_max": 2.0,
+  "page_load_timeout": 10,
+  "debug": false,
+  "users": {}
+}
