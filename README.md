@@ -38,10 +38,10 @@
 
 ### 第一步：安装 Python 依赖
 
-打开终端（CMD 或 PowerShell），进入项目目录，执行以下命令：
+打开终端（PowerShell），进入项目目录，执行以下命令：
 
 ```bash
-cd D:\project\python\Stmcn_Points_Autoget
+cd D:\Stmcu_Points_Autoget
 pip install -r requirements.txt
 ```
 
