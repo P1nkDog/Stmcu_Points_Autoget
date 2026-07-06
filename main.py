@@ -32,6 +32,7 @@ DEFAULT_CONFIG = {
     "delay_max": 2.0,
     "page_load_timeout": 10,
     "debug": False,
+    "video_404_retries": 3,
     "users": {}
 }
 
@@ -158,7 +159,14 @@ def parse_args():
         default=False,
         help="重新选择浏览器"
     )
-    
+
+    parser.add_argument(
+        "--retries",
+        type=int,
+        default=None,
+        help="视频404时刷新重试次数（含首次访问，例如3表示最多访问3次）"
+    )
+
     return parser.parse_args()
 
 class StmcuPointsBot:
@@ -179,6 +187,7 @@ class StmcuPointsBot:
         self.page_load_timeout = config["page_load_timeout"]
         self.debug = config["debug"]
         self.browser = config["browser"]
+        self.video_404_retries = max(1, config.get("video_404_retries", 3))
         
     def get_user_progress_file(self):
         """获取用户独立的进度文件"""
@@ -576,44 +585,61 @@ class StmcuPointsBot:
             return 0
             
     def watch_video(self, video_id):
-        """观看视频"""
+        """观看视频（404自动刷新重试，区分瞬时404与真404）"""
         video_url = f"{VIDEO_URL_PREFIX}{video_id}"
-        try:
-            self.driver.get(video_url)
-            
-            # 等待页面完全加载
-            wait = WebDriverWait(self.driver, self.page_load_timeout)
+        max_attempts = self.video_404_retries
+
+        for attempt in range(1, max_attempts + 1):
             try:
-                # 等待 body 加载完成
-                wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
-                # 额外等待页面 JavaScript 执行完成
-                wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
+                self.driver.get(video_url)
+
+                wait = WebDriverWait(self.driver, self.page_load_timeout)
+                try:
+                    wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+                    wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
+                except TimeoutException:
+                    return False, "页面加载超时"
+
+                self.random_delay(3, 5)
+
+                page_source = self.driver.page_source.lower()
+                is_404 = ("404" in page_source or "页面不存在" in page_source
+                          or "not found" in page_source)
+
+                if is_404:
+                    if self.debug:
+                        print(f"[调试] 视频 {video_id} 检测到404，尝试刷新...")
+                    self.driver.refresh()
+                    self.random_delay(2, 3)
+                    page_source = self.driver.page_source.lower()
+                    is_404 = ("404" in page_source or "页面不存在" in page_source
+                              or "not found" in page_source)
+                    if is_404:
+                        if attempt < max_attempts:
+                            if self.debug:
+                                print(f"[调试] 刷新后仍404，第{attempt}/{max_attempts}次重试...")
+                            self.random_delay(1, 2)
+                            continue
+                        return False, "页面不存在(404)"
+                    if self.debug:
+                        print(f"[调试] 刷新后页面恢复")
+
+                video_elements = self.driver.find_elements(By.TAG_NAME, "video")
+                iframe_elements = self.driver.find_elements(By.TAG_NAME, "iframe")
+
+                if not video_elements and not iframe_elements:
+                    video_containers = self.driver.find_elements(By.CSS_SELECTOR, "[class*='video'], [class*='player']")
+                    if not video_containers:
+                        return False, "无视频内容"
+
+                return True, "访问成功"
+
             except TimeoutException:
                 return False, "页面加载超时"
-            
-            # 增加等待时间，确保动态内容加载完成
-            self.random_delay(3, 5)
-            
-            page_source = self.driver.page_source.lower()
-            if "404" in page_source or "页面不存在" in page_source or "not found" in page_source:
-                return False, "页面不存在(404)"
-                
-            video_elements = self.driver.find_elements(By.TAG_NAME, "video")
-            iframe_elements = self.driver.find_elements(By.TAG_NAME, "iframe")
-            
-            if not video_elements and not iframe_elements:
-                video_containers = self.driver.find_elements(By.CSS_SELECTOR, "[class*='video'], [class*='player']")
-                if not video_containers:
-                    return False, "无视频内容"
-                    
-            return True, "访问成功"
-            
-        except TimeoutException:
-            return False, "页面加载超时"
-        except WebDriverException as e:
-            return False, f"浏览器错误: {str(e)[:100]}"
-        except Exception as e:
-            return False, f"访问异常: {str(e)}"
+            except WebDriverException as e:
+                return False, f"浏览器错误: {str(e)[:100]}"
+            except Exception as e:
+                return False, f"访问异常: {str(e)}"
             
     def add_log(self, video_id, status, points_before, points_after, note=""):
         """添加日志条目"""
@@ -852,6 +878,8 @@ if __name__ == "__main__":
         config["page_load_timeout"] = args.timeout
     if args.debug is not None:
         config["debug"] = args.debug
+    if args.retries is not None:
+        config["video_404_retries"] = args.retries
     
     # 验证参数
     if config["delay_min"] > config["delay_max"]:

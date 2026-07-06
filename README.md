@@ -41,7 +41,6 @@
 打开终端（CMD 或 PowerShell），进入项目目录，执行以下命令：
 
 ```bash
-cd D:\project\python\Stmcn_Points_Autoget
 pip install -r requirements.txt
 ```
 
@@ -123,6 +122,7 @@ python main.py
 | `--debug` | 启用调试模式 | False |
 | `--browser` | 选择浏览器 (chrome/edge) | 配置文件 |
 | `--reset-browser` | 重新选择浏览器 | False |
+| `--retries` | 视频404时的刷新重试次数 | 3 |
 
 ### 常用命令示例
 
@@ -167,6 +167,7 @@ python main.py --browser chrome --max-points 200 --debug
   "delay_max": 2.0,
   "page_load_timeout": 10,
   "debug": false,
+  "video_404_retries": 3,
   "users": {}
 }
 ```
@@ -217,7 +218,7 @@ python main.py --browser chrome --max-points 200 --debug
 ### 项目结构
 
 ```
-Stmcn_Points_Autoget/
+Stmcu_Points_Autoget/
 │
 ├── main.py                      # 主脚本文件
 ├── config.json                  # 配置文件（首次运行时生成）
@@ -365,7 +366,7 @@ StmcuPointsBot
 
 1. **登录状态**：请确保在脚本运行期间不要关闭浏览器或退出登录
 2. **验证码**：如果遇到验证码，脚本会暂停并提示用户处理
-3. **网络问题**：连续 10 次失败会暂停并提示用户检查网络
+3. **网络问题**：遇到网络或404错误时会自动重试，重试耗尽后标记为无效并继续下一个视频
 4. **积点上限**：每日最多获取 300 积点，超过自动停止
 5. **进度保存**：脚本会自动保存用户进度，下次运行自动继续
 6. **反爬措施**：脚本已内置随机延迟和反检测机制
