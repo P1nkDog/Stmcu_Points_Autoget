@@ -805,9 +805,29 @@ class StmcuPointsBot:
                         print(f"[警告] 视频 {video_id}: 无法获取积点变化")
                         
                 else:
-                    status = "无效"
-                    note = message
-                    print(f"[无效] 视频 {video_id}: {message}")
+                    if "页面不存在(404)" in message:
+                        self.random_delay(1, 2)
+                        new_points = self.get_current_points()
+                        if new_points is not None:
+                            points_gained = new_points - points_before
+                            if points_gained > 0:
+                                self.today_points += points_gained
+                                current_points = new_points
+                                status = "已看"
+                                note = f"+{points_gained}积点(页面404但获得积点)"
+                                print(f"[成功] 视频 {video_id}: 页面404但积点增加 {points_before} → {new_points} (+{points_gained})，今日累计 {self.today_points}")
+                            else:
+                                status = "无效"
+                                note = message
+                                print(f"[无效] 视频 {video_id}: {message}")
+                        else:
+                            status = "无效"
+                            note = message
+                            print(f"[无效] 视频 {video_id}: {message}")
+                    else:
+                        status = "无效"
+                        note = message
+                        print(f"[无效] 视频 {video_id}: {message}")
                     
                 self.add_log(video_id, status, points_before, current_points, note)
                 
