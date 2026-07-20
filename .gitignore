@@ -69,6 +69,7 @@ Thumbs.db
 
 # Project specific - 用户数据文件
 config.json
+accounts.json
 progress*.json
 logs*/
 *.log

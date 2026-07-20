@@ -22,6 +22,8 @@ BASE_URL = "https://www.stmcu.com.cn"
 POINTS_URL = f"{BASE_URL}/User/MyPoint"
 VIDEO_URL_PREFIX = f"{BASE_URL}/video/"
 CONFIG_FILE = "config.json"
+ACCOUNTS_FILE = "accounts.json"
+LOGIN_URL = "https://sso.stmicroelectronics.cn/User/LoginByPassword"
 
 # 默认配置
 DEFAULT_CONFIG = {
@@ -35,6 +37,111 @@ DEFAULT_CONFIG = {
     "video_404_retries": 3,
     "users": {}
 }
+
+def load_accounts():
+    """加载账号文件"""
+    if os.path.exists(ACCOUNTS_FILE):
+        try:
+            with open(ACCOUNTS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[警告] 加载账号文件失败: {e}")
+    return {"accounts": []}
+
+def save_accounts(accounts):
+    """保存账号文件"""
+    try:
+        with open(ACCOUNTS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(accounts, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[错误] 保存账号文件失败: {e}")
+
+def add_account_interactive():
+    """交互式添加新账号"""
+    print("\n" + "="*50)
+    print("添加新账号")
+    print("="*50)
+
+    accounts = load_accounts()
+
+    name = input("请输入备注名（如：工作账号）: ").strip()
+    if not name:
+        print("[错误] 备注名不能为空")
+        return
+
+    username = input("请输入邮箱/手机号: ").strip()
+    if not username:
+        print("[错误] 账号不能为空")
+        return
+
+    password = input("请输入密码: ").strip()
+    if not password:
+        print("[错误] 密码不能为空")
+        return
+
+    # 检查是否已存在
+    for acc in accounts["accounts"]:
+        if acc["username"] == username:
+            print(f"[警告] 账号 {username} 已存在，将覆盖")
+            acc["name"] = name
+            acc["password"] = password
+            save_accounts(accounts)
+            print("[INFO] 账号已更新")
+            return
+
+    accounts["accounts"].append({
+        "name": name,
+        "username": username,
+        "password": password
+    })
+    save_accounts(accounts)
+    print(f"[INFO] 账号 {username} 添加成功")
+
+def list_accounts():
+    """列出所有账号"""
+    accounts = load_accounts()
+    if not accounts["accounts"]:
+        print("\n[INFO] 暂无保存的账号")
+        print("[提示] 使用 --add-account 添加账号")
+        return
+
+    print("\n" + "="*50)
+    print("已保存的账号")
+    print("="*50)
+    for i, acc in enumerate(accounts["accounts"], 1):
+        print(f"  {i}. {acc['name']} ({acc['username']})")
+    print("="*50)
+
+def select_account():
+    """选择账号，返回 (username, password) 或 None"""
+    accounts = load_accounts()
+
+    if not accounts["accounts"]:
+        print("\n[INFO] 暂无保存的账号")
+        print("[提示] 使用 --add-account 添加账号，或选择手动登录")
+        return None
+
+    print("\n" + "="*50)
+    print("请选择登录账号:")
+    print("="*50)
+    for i, acc in enumerate(accounts["accounts"], 1):
+        print(f"  {i}. {acc['name']} ({acc['username']})")
+    print(f"  0. 手动登录")
+    print("="*50)
+
+    while True:
+        choice = input("请输入选项: ").strip()
+        if choice == "0":
+            return None
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(accounts["accounts"]):
+                acc = accounts["accounts"][idx]
+                return (acc["username"], acc["password"])
+            else:
+                print("[错误] 无效选项，请重新输入")
+        except ValueError:
+            print("[错误] 请输入数字")
 
 def load_config():
     """加载配置文件"""
@@ -167,10 +274,31 @@ def parse_args():
         help="视频404时刷新重试次数（含首次访问，例如3表示最多访问3次）"
     )
 
+    parser.add_argument(
+        "--add-account",
+        action="store_true",
+        default=False,
+        help="添加新账号"
+    )
+
+    parser.add_argument(
+        "--list-accounts",
+        action="store_true",
+        default=False,
+        help="列出所有已保存的账号"
+    )
+
+    parser.add_argument(
+        "--account-index",
+        type=int,
+        default=None,
+        help="直接使用第N个账号（跳过选择）"
+    )
+
     return parser.parse_args()
 
 class StmcuPointsBot:
-    def __init__(self, config):
+    def __init__(self, config, account_index=None):
         self.config = config
         self.driver = None
         self.today = datetime.now().strftime("%Y-%m-%d")
@@ -178,6 +306,7 @@ class StmcuPointsBot:
         self.last_video_id = 1
         self.log_entries = []
         self.username = None
+        self.account_index = account_index
         
         # 从配置中获取参数
         self.max_daily_points = config["max_daily_points"]
@@ -412,8 +541,75 @@ class StmcuPointsBot:
         except Exception as e:
             print(f"[错误] 保存进度失败: {e}")
             
-    def wait_for_user_login(self):
-        """等待用户手动登录"""
+    def wait_for_user_login(self, account_index=None):
+        """等待用户登录（支持自动登录）"""
+        # 尝试自动登录
+        account = None
+
+        if account_index is not None:
+            # 使用指定账号
+            accounts = load_accounts()
+            idx = account_index - 1
+            if 0 <= idx < len(accounts["accounts"]):
+                account = (accounts["accounts"][idx]["username"], accounts["accounts"][idx]["password"])
+                print(f"[INFO] 使用账号: {accounts['accounts'][idx]['username']}")
+            else:
+                print(f"[警告] 账号索引 {account_index} 无效")
+        else:
+            # 选择账号
+            account = select_account()
+
+        if account:
+            username, password = account
+            print(f"\n[INFO] 正在自动登录...")
+
+            try:
+                # 打开登录页面
+                self.driver.get(LOGIN_URL)
+
+                wait = WebDriverWait(self.driver, self.page_load_timeout)
+                try:
+                    wait.until(EC.presence_of_element_located((By.ID, "username")))
+                    wait.until(EC.presence_of_element_located((By.ID, "password")))
+                except TimeoutException:
+                    print("[警告] 登录页面加载超时，尝试继续...")
+
+                self.random_delay(1, 2)
+
+                # 填写账号
+                username_input = self.driver.find_element(By.ID, "username")
+                username_input.clear()
+                username_input.send_keys(username)
+                self.random_delay(0.3, 0.5)
+
+                # 填写密码
+                password_input = self.driver.find_element(By.ID, "password")
+                password_input.clear()
+                password_input.send_keys(password)
+                self.random_delay(0.3, 0.5)
+
+                # 点击登录按钮
+                login_btn = self.driver.find_element(By.CSS_SELECTOR, "input[type='submit'].an_lan")
+                login_btn.click()
+
+                # 等待登录完成
+                print("[INFO] 等待登录完成...")
+                self.random_delay(3, 5)
+
+                # 检查是否登录成功（跳转到首页或其他页面）
+                current_url = self.driver.current_url
+                if "LoginByPassword" not in current_url:
+                    print("[INFO] 登录成功")
+                    return
+                else:
+                    print("[警告] 自动登录可能失败，请检查账号密码")
+                    print("[提示] 将切换到手动登录模式")
+
+            except Exception as e:
+                print(f"[错误] 自动登录失败: {e}")
+                print("[提示] 将切换到手动登录模式")
+
+        # 手动登录（原有逻辑）
         self.driver.get(f"{BASE_URL}/User/Login")
         print("\n" + "="*50)
         print("[重要] 请在浏览器中手动登录账号")
@@ -712,7 +908,7 @@ class StmcuPointsBot:
         
         try:
             # 等待用户登录
-            self.wait_for_user_login()
+            self.wait_for_user_login(self.account_index)
             
             # 获取用户名
             print("\n[INFO] 正在获取用户名...")
@@ -871,10 +1067,19 @@ class StmcuPointsBot:
 if __name__ == "__main__":
     # 加载配置文件
     config = load_config()
-    
+
     # 解析命令行参数
     args = parse_args()
-    
+
+    # 处理账号管理命令
+    if args.add_account:
+        add_account_interactive()
+        exit(0)
+
+    if args.list_accounts:
+        list_accounts()
+        exit(0)
+
     # 重置浏览器选择
     if args.reset_browser:
         config["browser"] = ""
@@ -912,6 +1117,6 @@ if __name__ == "__main__":
     
     # 保存配置
     save_config(config)
-    
-    bot = StmcuPointsBot(config)
+
+    bot = StmcuPointsBot(config, account_index=args.account_index)
     bot.run()

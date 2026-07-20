@@ -1,0 +1,9 @@
+{
+  "accounts": [
+    {
+      "name": "示例账号",
+      "username": "your_email@example.com",
+      "password": "your_password"
+    }
+  ]
+}

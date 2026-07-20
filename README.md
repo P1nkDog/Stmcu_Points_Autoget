@@ -19,6 +19,7 @@
 - **多浏览器支持**：支持 Edge 和 Chrome 浏览器
 - **多用户支持**：每个用户独立的进度文件和日志
 - **自动获取今日积点**：从积点详情页自动统计今日已获积点
+- **账号管理**：保存多个账号，运行时选择自动登录
 - **手动登录**：支持用户在浏览器中手动登录，保持会话
 - **错误处理**：遇到验证码或网络错误时记录日志并通知用户
 - **状态标记**：区分已看视频（获得积点）和无效视频（未获得积点）
@@ -123,6 +124,9 @@ python main.py
 | `--browser` | 选择浏览器 (chrome/edge) | 配置文件 |
 | `--reset-browser` | 重新选择浏览器 | False |
 | `--retries` | 视频404时的刷新重试次数 | 3 |
+| `--add-account` | 添加新账号 | - |
+| `--list-accounts` | 列出所有已保存的账号 | - |
+| `--account-index` | 直接使用第N个账号（跳过选择） | - |
 
 ### 常用命令示例
 
@@ -151,6 +155,40 @@ python main.py --delay-min 1 --delay-max 3
 # 组合使用
 python main.py --browser chrome --max-points 200 --debug
 ```
+
+### 账号管理
+
+脚本支持保存多个账号，运行时选择账号自动登录：
+
+```bash
+# 添加新账号
+python main.py --add-account
+
+# 列出所有已保存的账号
+python main.py --list-accounts
+
+# 使用第1个账号自动登录
+python main.py --account-index 1
+
+# 使用第2个账号 + Chrome 浏览器
+python main.py --account-index 2 --browser chrome
+```
+
+账号信息保存在 `accounts.json` 文件中，格式如下：
+
+```json
+{
+  "accounts": [
+    {
+      "name": "工作账号",
+      "username": "example@email.com",
+      "password": "your_password"
+    }
+  ]
+}
+```
+
+> **注意**：密码明文存储，仅限本地使用。请勿分享此文件。
 
 ---
 
